@@ -1,0 +1,138 @@
+---
+title: "Prediction Assignment Writeup"
+author: "Victor Yeste"
+date: "8/9/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Summary
+
+In this project, the goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants to predict the manner in which they did the exercise. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website [here](http://groupware.les.inf.puc-rio.br/har) (see the section on the Weight Lifting Exercise Dataset). This project will use the prediction model to predict 20 different test cases.
+
+## Load data and libraries
+
+First, we load the necessary libraries for the project.
+
+```{r libraries}
+library(lattice)
+library(ggplot2)
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+set.seed(4567)
+```
+
+Next, we load the data from the training and testing URLs. The outcome variable is classe, a factor variable.
+
+```{r data}
+training <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", na.strings = c("NA", "#DIV/0!", ""))
+testing <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", na.strings = c("NA", "#DIV/0!", ""))
+training$classe <- as.factor(training$classe)
+```
+
+## Data Exploration
+
+Let's explore the variables with which we are going to work.
+
+```{r data_exploration}
+dim(training)
+names(training)
+dim(testing)
+names(testing)
+```
+
+## Data Cleaning
+
+First, we extract only the values of the data we are going to work with.
+
+```{r data_values}
+training <- training[, c(-1, -2, -3, -4, -5, -6, -7)]
+```
+
+Second, we delete all the columns that have more than 60% of NA values.
+
+```{r na_deletion}
+training <- training[, colSums(is.na(training)/dim(training)[1]) < 0.6]
+```
+
+Third, we remove the near zero variance predictors.
+
+```{r nzv}
+nzv <- nearZeroVar(training, saveMetrics = TRUE)
+sum(nzv$zeroVar == TRUE)
+sum(nzv$nzv == TRUE)
+dim(training)
+```
+
+There is no near zero variance predictors, so we are left with 52 predictors. Now it is necessary to limit the columns of the testing data too for this selection.
+
+```{r testing_data_cleaning}
+testing <- testing[colnames(training[, -53])]
+dim(testing)
+```
+
+## Cross Validation
+
+Because we have 19622 observations, we have enough data to do apartition of the training data into two data sets: 60% for subTraining and 40% for subTesting.
+
+```{r data_partition}
+inTrain <- createDataPartition(y = training$classe, p = 0.6, list = FALSE)
+subTraining <- training[inTrain, ]
+subTesting <- training[-inTrain, ]
+dim(subTraining)
+dim(subTesting)
+```
+
+Now, let's see the frequency of the classes in the subTraining data set.
+
+```{r subtraining_classe_freq}
+qplot(subTraining$classe, main = "Frequency of the classe variable in the subTraining data set", xlab = "classe", ylab = "Frequency")
+```
+
+In the graph above we can see that the classe A is the more frequent, while the classe D is the less frequent.
+
+## Model 1: Decision Tree
+
+The first model we will use is the Decision Tree.
+
+```{r decision_tree}
+model1 <- rpart(classe ~ ., data = subTraining, method = "class")
+rpart.plot(model1, extra = 102, under = TRUE, faclen = 0)
+```
+
+With the model, let's predict the values.
+
+```{r decision_tree_prediction}
+prediction1 <- predict(model1, subTraining, type = "class")
+confusionMatrix(prediction1, subTraining$classe)
+```
+
+## Model 2: Random Forest
+
+The second model we will use is the Random Forest.
+
+```{r random_forest}
+model2 <- randomForest(classe ~ ., data = subTraining, method = "class")
+prediction2 <- predict(model2, subTesting, type = "class")
+confusionMatrix(prediction2, subTesting$classe)
+```
+
+## Expected out of sample error
+
+The goal is to predict maximizing the accuracy and minimizing the out of sample error. The accuracy is the correct classified observation over the total sample in the subset of training for testing. The out of sample error is the same but in the testing data set.
+
+The accuracy for the Random Forest model (0.9941) has been better than the one from Decision Tree model (0.7519), so the Random Forest model is chosen for the prediction. The expected out of sample error is, then, 0.0059 or 0.59%.
+
+## Answers for the Assignment
+
+To get the answers for the assignment, it is necessary to apply the chosen model, Random Forest, to the testing data set.
+
+```{r assignment}
+predictionassignment <- predict(model2, testing, type = "class")
+predictionassignment
+```
